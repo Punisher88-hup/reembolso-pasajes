@@ -5,20 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Reembolso de Pasajes · Newrest Albemarle</title>
 
-<!--
-  ============================================================================
-  REEMBOLSO DE PASAJES - VERSIÓN MEJORADA
-  Cambios principales:
-  · Compresión automática de imágenes (max 5MB por imagen)
-  · Validación de tamaño ANTES de subir
-  · Mejor manejo de errores de red
-  · Timeout configurable para uploads
-  · Indicador de progreso mejorado
-  ============================================================================
--->
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -68,6 +57,7 @@
   .field .hint{font-weight:400;color:var(--ink-faint);font-size:12px}
   .input{width:100%;border:1px solid var(--line-strong);border-radius:10px;background:#fcfbf8;padding:12px 13px;font-size:15px;font-family:inherit;color:var(--ink);transition:.16s}
   textarea.input{resize:vertical;min-height:74px}
+  select.input{cursor:pointer}
   .input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(224,123,28,.16);background:#fff}
   .input.err{border-color:var(--danger);box-shadow:0 0 0 3px rgba(192,57,43,.12)}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -83,9 +73,8 @@
   .thumb{position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}
   .thumb img{width:100%;height:100%;object-fit:cover;display:block}
   .thumb .x{position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:6px;border:0;cursor:pointer;background:rgba(16,37,57,.78);color:#fff;font-size:12px;line-height:1;display:grid;place-items:center}
-  .thumb .status{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:10px;color:#fff}
+  .thumb .status{position:absolute;bottom:2px;right:2px;font-size:9px;color:#fff;background:rgba(0,0,0,.6);padding:1px 3px;border-radius:3px}
 
-  /* Indicador de compresión */
   .compress-info{font-size:11px;color:var(--ink-faint);margin-top:4px}
   .compress-info.warn{color:var(--warn)}
 
@@ -103,9 +92,81 @@
   .folio-box span{display:block;font-size:11px;color:var(--ink-faint);letter-spacing:.14em;text-transform:uppercase}
   .folio-box b{font-family:'Space Mono';font-size:22px;color:var(--accent-deep)}
 
-  /* status result */
   .statline{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line);font-size:14.5px}
   .statline:last-child{border:0}.statline .k{color:var(--ink-soft)}.statline .v{font-weight:600}
+
+  .stat .k{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-faint)}
+  .stat .v{font-family:'Sora';font-weight:800;font-size:22px;margin-top:4px}.stat.amount .v{color:var(--accent-deep)}
+  .filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .filters .input{width:auto;flex:1;min-width:160px}.filters select.input{flex:0 0 auto;min-width:150px}
+
+  .cards{display:flex;flex-direction:column;gap:12px}
+  .rcard{background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow);overflow:hidden}
+  .rcard-top{display:grid;grid-template-columns:1fr auto;gap:14px;padding:16px 18px;cursor:pointer;align-items:center}
+  .rc-name{font-family:'Sora';font-weight:700;font-size:16px}
+  .rc-meta{display:flex;gap:14px;flex-wrap:wrap;color:var(--ink-soft);font-size:13px;margin-top:5px}
+  .rc-meta b{color:var(--ink);font-weight:600}
+  .rc-right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:7px}
+  .rc-monto{font-family:'Space Mono';font-weight:700;font-size:18px;color:var(--ink)}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;font-family:'Sora'}
+  .chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+  .chip.pendiente{color:var(--warn);background:rgba(185,129,11,.13)}
+  .chip.aprobado{color:var(--ok);background:rgba(31,138,91,.13)}
+  .chip.pagado{color:var(--teal);background:rgba(13,110,100,.13)}
+  .chip.rechazado{color:var(--danger);background:rgba(192,57,43,.13)}
+  .rc-folio{font-family:'Space Mono';font-size:11px;color:var(--ink-faint)}
+  .rcard-body{display:none;border-top:1px solid var(--line);padding:18px;background:#fcfbf8}
+  .rcard.open .rcard-body{display:block;animation:fade .25s both}
+  .detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}
+  .dt{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint)}
+  .dd{font-size:14.5px;font-weight:600;margin-top:3px}
+  .respaldos-title{font-size:12px;font-weight:700;color:var(--ink-soft);margin:6px 0 10px;text-transform:uppercase;letter-spacing:.05em}
+  .respaldos{display:flex;flex-direction:column;gap:14px}
+  .respaldo-gallery{display:flex;gap:14px;flex-wrap:wrap}
+  .respaldo-item{display:flex;flex-direction:column;gap:6px;width:110px;align-items:center}
+  .respaldo-item .lbopen,.respaldo-pdf-ico{display:block;width:110px;height:110px;border-radius:10px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow);background:#eee}
+  .respaldo-item img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
+  .respaldo-pdf-ico{display:grid;place-items:center;background:linear-gradient(160deg,#c0392b,#8e2318);color:#fff;font-family:'Sora';font-weight:800;font-size:22px;letter-spacing:.09em;text-decoration:none}
+  .respaldo-cap{font-size:11px;color:var(--ink-faint);font-weight:600}
+  .btn-dl-sol{align-self:flex-start;border:0;cursor:pointer;font-family:'Sora';font-weight:700;font-size:13.5px;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-deep));box-shadow:0 4px 12px rgba(224,123,28,.28);border-radius:10px;padding:10px 16px;transition:.15s}
+  .btn-dl-sol:hover{transform:translateY(-1px);box-shadow:0 7px 18px rgba(224,123,28,.36)}
+  .btn-dl-sol:disabled{opacity:.6;cursor:not-allowed;transform:none}
+  .thumb-pdf{width:100%;height:100%;display:grid;place-items:center;background:linear-gradient(160deg,#c0392b,#8e2318);color:#fff;font-family:'Sora';font-weight:800;font-size:18px;letter-spacing:.06em}
+  .estado-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px dashed var(--line)}
+  .ea-btn{border:1px solid var(--line-strong);background:#fff;border-radius:9px;padding:8px 14px;font-family:'Sora';font-weight:600;font-size:13px;cursor:pointer;transition:.15s}
+  .ea-btn:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+  .ea-btn[data-e="aprobado"]:hover{border-color:var(--ok);color:var(--ok)}
+  .ea-btn[data-e="pagado"]:hover{border-color:var(--teal);color:var(--teal)}
+  .ea-btn[data-e="rechazado"]:hover{border-color:var(--danger);color:var(--danger)}
+  .ea-btn[data-e="pendiente"]:hover{border-color:var(--warn);color:var(--warn)}
+  .empty{text-align:center;color:var(--ink-faint);padding:50px 20px;background:var(--card);border:1px dashed var(--line-strong);border-radius:13px}
+
+  /* --- Historial / pagos por mes --- */
+  .seg{display:inline-flex;gap:4px;background:rgba(16,37,57,.06);padding:4px;border-radius:11px;margin-bottom:18px}
+  .seg-btn{border:0;background:transparent;cursor:pointer;font-family:'Sora';font-weight:600;font-size:13px;color:var(--ink-soft);padding:8px 16px;border-radius:8px;transition:.16s}
+  .seg-btn.active{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  .hist-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+  .hist-lbl{font-size:13px;color:var(--ink-soft);font-weight:600}
+  .hist-months{display:flex;flex-direction:column;gap:12px}
+  .hmonth{background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow);overflow:hidden}
+  .hmonth-top{display:grid;grid-template-columns:170px 1fr auto;gap:18px;align-items:center;padding:16px 18px;cursor:pointer}
+  .hm-name{font-family:'Sora';font-weight:700;font-size:16px;text-transform:capitalize}
+  .hm-sub{font-size:12.5px;color:var(--ink-faint);margin-top:2px}
+  .hm-bars{min-width:0}
+  .hm-bar{height:9px;border-radius:6px;background:rgba(16,37,57,.08);overflow:hidden}
+  .hm-bar span{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--teal),#12897d);transition:width .4s}
+  .hm-amounts{display:flex;gap:14px;margin-top:6px;font-size:12.5px;flex-wrap:wrap}
+  .hm-paid{color:var(--teal);font-weight:700}
+  .hm-pend{color:var(--warn);font-weight:700}
+  .hm-count{color:var(--ink-faint)}
+  .hm-total{font-family:'Space Mono';font-weight:700;font-size:18px;color:var(--ink);text-align:right;white-space:nowrap}
+  .hmonth-body{display:none;border-top:1px solid var(--line);padding:4px 8px 8px;background:#fcfbf8;overflow-x:auto}
+  .hmonth.open .hmonth-body{display:block;animation:fade .25s both}
+  .htable{width:100%;border-collapse:collapse;font-size:13.5px;min-width:520px}
+  .htable th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);font-weight:700;padding:9px 10px;border-bottom:1px solid var(--line)}
+  .htable td{padding:9px 10px;border-bottom:1px solid var(--line)}
+  .htable tr:last-child td{border-bottom:0}
+  @media(max-width:680px){.hmonth-top{grid-template-columns:1fr;gap:10px}.hm-total{text-align:left}}
 
   .panel-head{display:flex;align-items:end;gap:14px;flex-wrap:wrap;margin-bottom:20px}
   .panel-head h2{font-size:24px;font-weight:800}.panel-head p{color:var(--ink-soft);font-size:13.5px;margin:4px 0 0}
@@ -113,363 +174,727 @@
   .who{font-size:12.5px;color:var(--ink-soft)}
   .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px 16px;box-shadow:var(--shadow)}
-  .stat .num{font-family:'Space Mono';font-size:32px;font-weight:700;color:var(--accent)}
-  .stat .label{font-size:12.5px;color:var(--ink-soft);margin-top:3px}
 
-  .rcard{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:14px;box-shadow:var(--shadow)}
-  .rcard .toggle{background:var(--card);padding:18px;display:flex;justify-content:space-between;align-items:center;gap:16px;cursor:pointer;border:0;width:100%;text-align:left;transition:.16s;font-size:14px}
-  .rcard .toggle:hover{background:rgba(224,123,28,.06)}
-  .rcard.open .toggle{background:rgba(224,123,28,.08);border-bottom:1px solid var(--line)}
-  .rc-left{flex:1}
-  .rc-head{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;font-weight:600}
-  .rc-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft)}
-  .rc-folio{font-family:'Space Mono';color:var(--accent-deep)}
-  .rc-right{display:flex;gap:8px;align-items:center;font-weight:600}
-  .chip{display:inline-block;padding:5px 10px;border-radius:6px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
-  .chip.pendiente{background:rgba(185,129,11,.15);color:var(--warn)}
-  .chip.aprobado{background:rgba(31,138,91,.15);color:var(--ok)}
-  .chip.pagado{background:rgba(13,110,100,.15);color:var(--teal)}
-  .chip.rechazado{background:rgba(192,57,43,.15);color:var(--danger)}
-  .rc-monto{color:var(--accent-deep);font-family:'Space Mono'}
-  .rcard-body{background:var(--card);border-top:1px solid var(--line);padding:18px;display:none}
-  .rcard.open .rcard-body{display:block}
+  .gate{max-width:400px;margin:30px auto}.gate h3{font-size:19px;margin-bottom:6px}.gate p{color:var(--ink-soft);font-size:13.5px;margin:0 0 18px}
 
-  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}
-  .dt{font-size:11px;color:var(--ink-faint);letter-spacing:.08em;text-transform:uppercase;margin-bottom:3px}
-  .dd{font-weight:600;font-size:14px}
+  .lb{position:fixed;inset:0;background:rgba(16,37,57,.82);display:none;place-items:center;z-index:60;padding:24px}
+  .lb.open{display:grid}.lb img{max-width:92vw;max-height:88vh;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .lb .close{position:absolute;top:18px;right:22px;color:#fff;font-size:30px;cursor:pointer;background:0;border:0}
 
-  .respaldos-title{font-weight:600;margin-bottom:10px;font-size:13px}
-  .respaldos{display:flex;flex-wrap:wrap;gap:8px}
-  .respaldos a{width:72px;height:72px;border-radius:8px;overflow:hidden;border:1px solid var(--line);display:block;cursor:pointer;transition:.16s}
-  .respaldos a:hover{border-color:var(--accent);box-shadow:0 0 0 2px rgba(224,123,28,.2)}
-  .respaldos a img{width:100%;height:100%;object-fit:cover;display:block}
+  .modal{position:fixed;inset:0;background:rgba(16,37,57,.55);display:none;place-items:center;z-index:65;padding:20px;backdrop-filter:blur(2px)}
+  .modal.open{display:grid}
+  .modal-card{background:var(--card);border-radius:16px;max-width:430px;width:100%;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.3);position:relative}
+  .modal-card h3{font-size:20px}
+  .modal-x{position:absolute;top:12px;right:14px;background:0;border:0;font-size:24px;cursor:pointer;color:var(--ink-soft);line-height:1}
+  #qrBox{display:grid;place-items:center;padding:16px;background:#fff;border-radius:12px;border:1px solid var(--line);min-height:160px}
+  #qrBox img,#qrBox canvas{display:block}
 
-  .estado-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
-  .ea-btn{border:1px solid var(--line-strong);background:var(--card);color:var(--ink);padding:7px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:.16s}
-  .ea-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .demo-flag{display:inline-block;margin-left:8px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-deep);background:rgba(224,123,28,.13);padding:3px 8px;border-radius:6px;vertical-align:middle}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:13px 20px;border-radius:11px;font-weight:600;font-size:14px;opacity:0;transition:.3s;z-index:70;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-  .modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:40}
-  .modal.open{display:flex;animation:fadeIn .3s}
-  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-  .modal-box{background:var(--card);border-radius:14px;padding:30px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.2)}
-  .modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-  .modal-head h3{margin:0;font-size:18px}
-  .modal-close{border:0;background:transparent;font-size:22px;cursor:pointer;color:var(--ink-faint);padding:0;width:26px;height:26px;display:grid;place-items:center}
-
-  .toast{position:fixed;bottom:20px;left:20px;background:var(--ink);color:#fff;padding:12px 18px;border-radius:8px;font-size:13px;z-index:50;animation:slideUp .3s ease;box-shadow:var(--shadow)}
-  @keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:none;opacity:1}}
+  @media(max-width:680px){.row2{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.pass{grid-template-columns:54px 1fr}.pass-body{padding:24px 20px 28px}.topbar-inner{flex-wrap:wrap}.tabs{margin-left:0;width:100%}.tab{flex:1}}
 </style>
 </head>
 <body>
 
-<div class="topbar">
+<header class="topbar">
   <div class="topbar-inner">
-    <div class="brand"><div class="glyph">✈</div><div><div>Reembolso</div><small>Pasajes</small></div></div>
+    <div class="brand">
+      <div class="glyph">✈</div>
+      <div>Reembolso de Pasajes <span id="demoFlag" class="demo-flag" style="display:none">Modo demo</span>
+        <small>Newrest · Campamento Albemarle</small></div>
+    </div>
     <div class="tabs">
-      <button class="tab active" data-tab="solicitar">Solicitar</button>
-      <button class="tab" data-tab="misolicitud">Mi solicitud</button>
+      <button class="tab active" data-view="form">Solicitar</button>
+      <button class="tab" data-view="mi">Mi solicitud</button>
+      <button class="tab" data-view="recepcion">Recepción · RRHH</button>
     </div>
   </div>
-</div>
+</header>
 
-<div class="wrap">
-  <div id="solicitar" class="view active">
+<main class="wrap">
+
+  <!-- ============ FORMULARIO (colaborador) ============ -->
+  <section class="view active" id="view-form">
     <div class="pass">
-      <div class="stub"><span>Nuevo viaje</span></div>
+      <div class="stub"><span>Boarding · Reembolso</span></div>
       <div class="pass-body">
         <div class="pass-head">
-          <h1>Solicita tu reembolso</h1>
-          <div class="ticketcode">
-            <span>Folio</span>
-            <b id="folioNew">—</b>
+          <div><h1>Reembolso de pasajes</h1></div>
+          <div class="ticketcode">Folio<b class="mono">REB-····</b></div>
+        </div>
+        <p class="lead">Ingresa tus datos y <strong>adjunta la imagen del respaldo</strong> (boleto, voucher o comprobante). Recepción de RRHH procesará el pago. Guarda tu folio para consultar el estado.</p>
+
+        <div class="field">
+          <label>Nombre completo del colaborador <span class="req">*</span></label>
+          <input class="input" id="f_nombre" placeholder="Ej: José Luis Torres Farías" autocomplete="name">
+          <div class="msg" id="m_nombre"></div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>RUT <span class="req">*</span> <span class="hint">(12.345.678-9)</span></label>
+            <input class="input mono" id="f_rut" placeholder="12.345.678-9" maxlength="12">
+            <div class="msg" id="m_rut"></div>
+          </div>
+          <div class="field">
+            <label>Fecha de viaje <span class="req">*</span></label>
+            <input class="input" id="f_fecha" type="date">
+            <div class="msg" id="m_fecha"></div>
           </div>
         </div>
-        <p class="lead">Completa el formulario con los datos de tu viaje. Adjunta tus comprobantes (factura, pasaje, etc.)</p>
-
-        <form id="mainForm" onsubmit="submitForm(event)">
+        <div class="row2">
           <div class="field">
-            <label>Nombre <span class="req">*</span></label>
-            <input type="text" id="nombre" class="input" placeholder="Tu nombre completo" required />
-            <div class="msg"></div>
+            <label>Ciudad donde vives <span class="req">*</span></label>
+            <input class="input" id="f_ciudad" placeholder="Ej: Santiago" autocomplete="address-level2">
+            <div class="msg" id="m_ciudad"></div>
           </div>
-
           <div class="field">
-            <label>RUT <span class="req">*</span></label>
-            <div class="with-prefix">
-              <div class="pfx">CL</div>
-              <input type="text" id="rut" class="input" placeholder="20.123.456-K" required />
-            </div>
-            <div class="msg"></div>
+            <label>Monto a reembolsar <span class="req">*</span></label>
+            <div class="with-prefix"><span class="pfx">$</span><input class="input" id="f_monto" placeholder="120.000" inputmode="numeric"></div>
+            <div class="msg" id="m_monto"></div>
           </div>
-
-          <div class="row2">
-            <div class="field">
-              <label>Fecha del viaje <span class="req">*</span></label>
-              <input type="date" id="fechaViaje" class="input" required />
-              <div class="msg"></div>
-            </div>
-            <div class="field">
-              <label>Ciudad destino</label>
-              <input type="text" id="ciudad" class="input" placeholder="Ej: Antofagasta, Copiapó" />
-              <div class="msg"></div>
-            </div>
-          </div>
-
-          <div class="row2">
-            <div class="field">
-              <label>Monto a reembolsar <span class="req">*</span></label>
-              <div class="with-prefix">
-                <div class="pfx">$</div>
-                <input type="number" id="monto" class="input" placeholder="0" min="0" step="1000" required />
-              </div>
-              <div class="msg"></div>
-            </div>
-            <div class="field">
-              <label>Medio de pago <span class="req">*</span></label>
-              <select id="medioPago" class="input" required>
-                <option value="">Selecciona un medio</option>
-                <option value="transferencia">Transferencia bancaria</option>
-                <option value="cheque">Cheque</option>
-                <option value="efectivo">Efectivo</option>
-                <option value="deposito">Depósito en cuenta</option>
-              </select>
-              <div class="msg"></div>
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Adjuntar respaldos <span class="req">*</span></label>
-            <p class="hint">Fotos, facturas, pasajes. Máximo 5 MB por imagen. Se comprimen automáticamente.</p>
-            <div id="drop" class="drop">
-              <div class="ico">📸</div>
-              <div class="t">Haz clic o arrastra archivos</div>
-              <div class="s">JPG, PNG, PDF (máx 5 MB c/u)</div>
-            </div>
-            <div class="thumbs" id="thumbs"></div>
-            <div class="compress-info" id="compressInfo"></div>
-            <div class="msg" id="dropMsg"></div>
-          </div>
-
-          <div class="field">
-            <label>Comentario</label>
-            <textarea id="comentario" class="input" placeholder="Agreguemos contexto si es necesario..."></textarea>
-            <div class="msg"></div>
-          </div>
-
-          <button type="submit" class="btn btn-primary" id="submitBtn">
-            Enviar solicitud de reembolso
-          </button>
-        </form>
+        </div>
+        <div class="field">
+          <label>Respaldo (imagen o PDF) <span class="req">*</span> <span class="hint">JPG/PNG/PDF · máx 5 · imágenes se optimizan</span></label>
+          <div class="drop" id="drop"><div class="ico">📎</div><div class="t">Agregar archivo</div><div class="s">Arrastra aquí o haz clic (imagen o PDF del comprobante)</div></div>
+          <input type="file" id="f_file" accept="image/*,application/pdf" multiple hidden>
+          <div class="thumbs" id="thumbs"></div>
+          <div class="compress-info" id="compressInfo"></div>
+          <div class="msg" id="m_file"></div>
+        </div>
+        <div class="field">
+          <label>Comentario <span class="hint">(opcional)</span></label>
+          <textarea class="input" id="f_comentario" placeholder="Tramo, motivo del viaje, observaciones…"></textarea>
+        </div>
+        <button class="btn btn-primary" id="submitBtn">Enviar solicitud de reembolso</button>
       </div>
     </div>
-  </div>
+  </section>
 
-  <div id="misolicitud" class="view">
-    <div style="max-width:720px;margin:0 auto">
-      <h2 style="font-size:26px;margin-bottom:24px">Mi solicitud</h2>
-      <div id="miSolicitudBox"></div>
+  <!-- ============ ÉXITO ============ -->
+  <section class="view" id="view-success">
+    <div class="card-box success">
+      <div class="check">✓</div>
+      <h2>¡Solicitud enviada!</h2>
+      <p class="lead" style="margin:8px 0 0">RRHH recibió tus datos y respaldo. Anota tu folio para revisar el estado en "Mi solicitud".</p>
+      <div class="folio-box"><span>Tu folio de seguimiento</span><b id="successFolio" class="mono">REB-2026-0001</b></div>
+      <div><button class="btn btn-ghost" id="newOne">Solicitar otro reembolso</button></div>
+    </div>
+  </section>
+
+  <!-- ============ MI SOLICITUD (colaborador consulta) ============ -->
+  <section class="view" id="view-mi">
+    <div class="card-box">
+      <h2 style="font-size:22px;font-weight:800">Estado de mi reembolso</h2>
+      <p class="lead" style="margin:6px 0 22px">Ingresa tu folio y RUT para ver en qué estado va tu solicitud.</p>
+      <div class="field">
+        <label>Folio <span class="req">*</span></label>
+        <input class="input mono" id="c_folio" placeholder="REB-2026-0001">
+      </div>
+      <div class="field">
+        <label>RUT <span class="req">*</span></label>
+        <input class="input mono" id="c_rut" placeholder="12.345.678-9" maxlength="12">
+      </div>
+      <div class="msg" id="m_consulta" style="text-align:center"></div>
+      <button class="btn btn-primary" id="consultaBtn" style="margin-top:2px">Consultar estado</button>
+      <div id="consultaResult" style="margin-top:22px;display:none"></div>
+    </div>
+  </section>
+
+  <!-- ============ RECEPCIÓN (RRHH) ============ -->
+  <section class="view" id="view-recepcion">
+    <div id="gateWrap">
+      <div class="card-box gate">
+        <h3>🔒 Acceso RRHH</h3>
+        <p>Ingresa la clave de acceso de Recursos Humanos.</p>
+        <div class="field"><label>Clave de acceso</label><input class="input" id="authPass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+        <button class="btn btn-primary" id="loginBtn" style="margin:0">Entrar</button>
+        <div class="msg" id="m_auth" style="text-align:center"></div>
+      </div>
+    </div>
+
+    <div id="adminWrap" style="display:none">
+      <div class="panel-head">
+        <div><h2>Recepción de reembolsos</h2><p>Revisa los datos, abre el respaldo y cambia el estado.</p></div>
+        <div class="panel-actions">
+          <span class="who" id="whoami"></span>
+          <button class="btn btn-ghost" id="qrBtn" style="padding:9px 14px;font-size:13px">⬚ QR formulario</button>
+          <button class="btn btn-ghost" id="reloadBtn" style="padding:9px 14px;font-size:13px">↻</button>
+          <button class="btn btn-ghost" id="exportBtn" style="padding:9px 14px;font-size:13px">⬇ CSV</button>
+          <button class="btn btn-ghost" id="logoutBtn" style="padding:9px 14px;font-size:13px">Salir</button>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="k">Solicitudes</div><div class="v" id="st_total">0</div></div>
+        <div class="stat"><div class="k">Pendientes</div><div class="v" id="st_pend">0</div></div>
+        <div class="stat"><div class="k">Aprob./Pagadas</div><div class="v" id="st_apr">0</div></div>
+        <div class="stat amount"><div class="k">Monto pendiente</div><div class="v mono" id="st_monto">$0</div></div>
+      </div>
+
+      <div class="seg">
+        <button class="seg-btn active" data-panel="solicitudes">Solicitudes</button>
+        <button class="seg-btn" data-panel="historial">Historial · Pagos por mes</button>
+      </div>
+
+      <div id="viewSolicitudes">
+        <div class="filters">
+          <input class="input" id="q" placeholder="🔍 Nombre, RUT o folio…">
+          <select class="input" id="fEstado">
+            <option value="">Todos los estados</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="aprobado">Aprobado</option>
+            <option value="pagado">Pagado</option>
+            <option value="rechazado">Rechazado</option>
+          </select>
+        </div>
+        <div class="cards" id="cards"></div>
+      </div>
+
+      <div id="viewHistorial" style="display:none">
+        <div class="hist-controls">
+          <span class="hist-lbl">Agrupar por:</span>
+          <select class="input" id="histBasis" style="max-width:220px">
+            <option value="created_at">Mes de solicitud</option>
+            <option value="fecha_viaje">Mes de viaje</option>
+          </select>
+          <span class="hist-lbl">Contar:</span>
+          <select class="input" id="histScope" style="max-width:230px">
+            <option value="pagado">Solo pagados</option>
+            <option value="todos">Todos los estados</option>
+          </select>
+          <button class="btn btn-ghost" id="histExport" style="padding:9px 14px;font-size:13px">⬇ CSV mensual</button>
+        </div>
+        <div class="hist-months" id="histMonths"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="lb" id="lightbox"><button class="close" id="lbClose">×</button><img id="lbImg" src="" alt=""></div>
+
+<div class="modal" id="qrModal">
+  <div class="modal-card">
+    <button class="modal-x" id="qrClose">×</button>
+    <h3>QR del formulario</h3>
+    <p class="lead" style="margin:6px 0 16px">Imprime este código y pégalo en el campamento. Al escanearlo, el colaborador abre directo el formulario de reembolso (sin la pestaña de RRHH).</p>
+    <div id="qrBox"></div>
+    <div class="field" style="margin-top:14px;margin-bottom:12px">
+      <label>Enlace que apunta el QR</label>
+      <input class="input" id="qrUrl" placeholder="https://tu-sitio.netlify.app/?form=1">
+      <div class="hint" style="margin-top:6px">Genera el QR desde el sitio ya publicado en Netlify para que el enlace sea el correcto.</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" id="qrRegen" style="flex:1">Actualizar</button>
+      <button class="btn btn-ghost" id="qrDownload" style="flex:1">Descargar PNG</button>
+      <button class="btn btn-primary" id="qrPrint" style="flex:1;margin:0">Imprimir</button>
     </div>
   </div>
 </div>
 
-<div id="lightbox" class="modal">
-  <img id="lbImg" src="" alt="" style="max-width:90vw;max-height:90vh;border-radius:12px">
-</div>
-
-<!-- Modal QR -->
-<div id="qrModal" class="modal">
-  <div class="modal-box" style="max-width:420px">
-    <div class="modal-head">
-      <h3>Código QR · Reembolso de Pasajes</h3>
-      <button class="modal-close">&times;</button>
-    </div>
-    <div id="qrBox" style="text-align:center;margin-bottom:20px"></div>
-    <div class="field">
-      <label>URL personalizada (opcional)</label>
-      <input type="text" id="qrUrl" class="input" placeholder="">
-    </div>
-    <div style="display:flex;gap:8px;margin-top:20px">
-      <button class="btn btn-ghost" id="qrRegen" style="flex:1">Regenerar</button>
-      <button class="btn btn-primary" id="qrDownload" style="flex:1">Descargar</button>
-      <button class="btn btn-primary" id="qrPrint" style="flex:1">Imprimir</button>
-    </div>
-  </div>
-</div>
+<div class="toast" id="toast"></div>
 
 <script>
-/* ==================== CONFIG ==================== */
-const CONFIG={
-  SUPABASE_URL:"",//← Reemplaza aquí
-  SUPABASE_ANON_KEY:"",//← Reemplaza aquí
-  BUCKET:"respaldos-reembolso",
-  MAX_FILE_SIZE:5*1024*1024,//5 MB
-  MAX_FILES:10,
-  COMPRESSION_QUALITY:0.75,//JPEG quality
-  UPLOAD_TIMEOUT:60000//60 segundos
+/* ============================ CONFIG ============================ */
+const CONFIG = {
+  SUPABASE_URL: "https://lrfbwvposnhyzwulxqud.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxyZmJ3dnBvc25oeXp3dWx4cXVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MjkwNDksImV4cCI6MjA5NjEwNTA0OX0.wT5e6s-s5h8i18ggGkmUYZNkrg5PgZIjPEH8gqyIAKo",
+  BUCKET: "respaldos",
+  MAX_FILE_SIZE: 15*1024*1024,        // 15 MB (antes 5 MB) — más margen para imágenes y PDF
+  MAX_FILES: 5,
+  COMPRESSION_QUALITY: 0.88,          // antes 0.75 — mejor calidad de lectura
+  MAX_IMAGE_DIM: 2560,                // antes 1920 — más resolución (boletos/vouchers legibles)
+  UPLOAD_TIMEOUT: 60000
 };
 
-let DEMO=!CONFIG.SUPABASE_URL||!CONFIG.SUPABASE_ANON_KEY;
-const sb=!DEMO?new supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_ANON_KEY):null;
-let demoStore=[];
+/* ============================ ESTADO ============================ */
+let sb=null, DEMO=true, session=null, allRows=[], pickedFiles=[];
+const demoStore=[];
+try{
+  if(window.supabase && !CONFIG.SUPABASE_URL.includes("TU-PROYECTO")){
+    sb=window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+    DEMO=false;
+  }
+}catch(e){ DEMO=true; }
+if(DEMO) document.getElementById("demoFlag").style.display="inline-block";
 
-/* ==================== UTILS ==================== */
-const $=(s)=>document.querySelector(s);const $$=(s)=>document.querySelectorAll(s);
-const esc=(s)=>(s||"").replace(/[<>]/g,c=>({<:"&lt;",">":"&gt;"}[c]));
-const clp=(n)=>new Intl.NumberFormat("es-CL",{style:"currency",currency:"CLP",minimumFractionDigits:0}).format(n);
-const fmtFecha=(d)=>{if(!d)return"—";const dt=new Date(d+"T00:00");return new Intl.DateTimeFormat("es-CL",{year:"numeric",month:"long",day:"numeric"}).format(dt);};
-function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3e3);}
-function genFolio(){const now=new Date();const y=now.getFullYear();const c=Math.random().toString(36).substr(2,4).toUpperCase();return `REB-${y}-${c}`;}
+/* ============================ HELPERS ============================ */
+const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+const clp=n=>"$"+(Number(n)||0).toLocaleString("es-CL");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2600);}
+function fmtFecha(d){if(!d)return"—";const x=new Date(d+(String(d).length===10?"T00:00:00":""));return x.toLocaleDateString("es-CL",{day:"2-digit",month:"short",year:"numeric"});}
+const labelEstado={pendiente:"Pendiente",aprobado:"Aprobado",pagado:"Pagado",rechazado:"Rechazado"};
 
-/* ==================== COMPRESIÓN DE IMÁGENES ==================== */
+function cleanRut(r){return(r||"").replace(/[^0-9kK]/g,"").toUpperCase();}
+function formatRut(r){r=cleanRut(r);if(!r)return"";const dv=r.slice(-1),body=r.slice(0,-1);let o="",c=0;for(let i=body.length-1;i>=0;i--){o=body[i]+o;if(++c%3===0&&i!==0)o="."+o;}return body?o+"-"+dv:dv;}
+function validRut(r){r=cleanRut(r);if(r.length<2)return false;const dv=r.slice(-1),body=r.slice(0,-1);if(!/^\d+$/.test(body))return false;let s=0,m=2;for(let i=body.length-1;i>=0;i--){s+=parseInt(body[i])*m;m=m===7?2:m+1;}let res=11-(s%11);const e=res===11?"0":res===10?"K":String(res);return e===dv;}
+
+/* ============================ COMPRESIÓN DE IMÁGENES ============================ */
 async function compressImage(file){
   return new Promise((resolve,reject)=>{
-    if(!file.type.startsWith("image/png")&&!file.type.startsWith("image/jpeg")){
-      resolve(file);//Si no es imagen, devuelve sin comprimir
-      return;
-    }
+    if(!file.type.startsWith("image/png")&&!file.type.startsWith("image/jpeg")){resolve(file);return;}
     const reader=new FileReader();
     reader.onload=(e)=>{
       const img=new Image();
       img.onload=()=>{
         const canvas=document.createElement("canvas");
         let {width,height}=img;
-        //Redimensionar si es muy grande
-        const MAX_DIM=1920;
+        const MAX_DIM=CONFIG.MAX_IMAGE_DIM||2560;
         if(width>MAX_DIM||height>MAX_DIM){
           const scale=Math.min(MAX_DIM/width,MAX_DIM/height);
-          width=Math.round(width*scale);
-          height=Math.round(height*scale);
+          width=Math.round(width*scale);height=Math.round(height*scale);
         }
-        canvas.width=width;
-        canvas.height=height;
-        const ctx=canvas.getContext("2d");
-        ctx.drawImage(img,0,0,width,height);
+        canvas.width=width;canvas.height=height;
+        const ctx=canvas.getContext("2d");ctx.drawImage(img,0,0,width,height);
         canvas.toBlob(
           (blob)=>{
             if(!blob){reject(new Error("Compresión falló"));return;}
-            const compressed=new File([blob],file.name,{type:"image/jpeg"});
-            resolve(compressed);
+            const compressed=new File([blob],file.name,{type:"image/jpeg"});resolve(compressed);
           },
           "image/jpeg",
           CONFIG.COMPRESSION_QUALITY
         );
       };
-      img.onerror=()=>reject(new Error("No se pudo leer la imagen"));
-      img.src=e.target.result;
+      img.onerror=()=>reject(new Error("No se pudo leer la imagen"));img.src=e.target.result;
     };
-    reader.onerror=()=>reject(new Error("Error al leer archivo"));
-    reader.readAsDataURL(file);
+    reader.onerror=()=>reject(new Error("Error al leer archivo"));reader.readAsDataURL(file);
   });
 }
 
-/* ==================== VALIDACIÓN DE ARCHIVO ==================== */
+function isPdfFile(f){return f.type==="application/pdf"||/\.pdf$/i.test(f.name||"");}
+function isImageFile(f){return (f.type||"").startsWith("image/");}
+const maxMB=()=>(CONFIG.MAX_FILE_SIZE/1024/1024).toFixed(0);
+
 async function validateAndCompressFile(file){
   const errs=[];
-  if(file.size>CONFIG.MAX_FILE_SIZE){
-    errs.push(`Archivo muy pesado (${(file.size/1024/1024).toFixed(1)}MB > 5MB). Se comprimirá automáticamente.`);
+  // --- PDF: no se comprime, solo se valida el peso ---
+  if(isPdfFile(file)){
+    if(file.size>CONFIG.MAX_FILE_SIZE){
+      errs.push(`PDF muy pesado (${(file.size/1024/1024).toFixed(1)}MB > ${maxMB()}MB).`);
+      return {ok:false,file:null,msgs:errs};
+    }
+    return {ok:true,file,msgs:[`✓ PDF adjuntado (${(file.size/1024/1024).toFixed(2)}MB)`]};
   }
-  if(!["image/jpeg","image/png","image/gif","application/pdf"].includes(file.type)){
-    errs.push(`Tipo no permitido: ${file.type}. Solo JPG, PNG, GIF, PDF.`);
-    return {ok:false,file:null,msgs:errs};
-  }
+  // --- Imagen: se optimiza (redimensiona + comprime) ---
+  if(!isImageFile(file)){errs.push(`Tipo no permitido: ${file.type||file.name}. Solo JPG, PNG o PDF.`);return {ok:false,file:null,msgs:errs};}
   try{
     const compressed=await compressImage(file);
     const sizeAfter=(compressed.size/1024/1024).toFixed(2);
-    if(compressed.size>CONFIG.MAX_FILE_SIZE){
-      errs.push(`Aún muy pesado tras compresión (${sizeAfter}MB). Intenta una imagen más pequeña.`);
-      return {ok:false,file:null,msgs:errs};
-    }
-    return {ok:true,file:compressed,msgs:[`✓ Comprimido a ${sizeAfter}MB`]};
-  }catch(err){
-    errs.push(`Error al procesar: ${err.message}`);
-    return {ok:false,file:null,msgs:errs};
-  }
+    if(compressed.size>CONFIG.MAX_FILE_SIZE){errs.push(`Aún muy pesado tras optimizar (${sizeAfter}MB).`);return {ok:false,file:null,msgs:errs};}
+    return {ok:true,file:compressed,msgs:[`✓ Imagen optimizada a ${sizeAfter}MB`]};
+  }catch(err){errs.push(`Error: ${err.message}`);return {ok:false,file:null,msgs:errs};}
 }
 
-/* ==================== FILE HANDLING ==================== */
-let selectedFiles=[];
-const dropZone=$("#drop");
-["dragenter","dragover"].forEach(e=>dropZone.addEventListener(e,(ev)=>{ev.preventDefault();dropZone.classList.add("over");}));
-["dragleave","drop"].forEach(e=>dropZone.addEventListener(e,()=>dropZone.classList.remove("over")));
-dropZone.addEventListener("click",()=>{const inp=document.createElement("input");inp.type="file";inp.multiple=true;inp.accept="image/*,.pdf";inp.onchange=(e)=>handleFiles(Array.from(e.target.files||[]));inp.click();});
-dropZone.addEventListener("drop",(e)=>{e.preventDefault();handleFiles(Array.from(e.dataTransfer?.files||[]));});
+/* ============================ NAV ============================ */
+$$(".tab").forEach(t=>t.addEventListener("click",()=>{$$(".tab").forEach(x=>x.classList.remove("active"));t.classList.add("active");showView(t.dataset.view);}));
+function showView(v){$$(".view").forEach(x=>x.classList.remove("active"));$("#view-"+v).classList.add("active");if(v==="recepcion"&&session)loadCards();}
+
+const PARAMS=new URLSearchParams(location.search);
+if(PARAMS.get("form")==="1"){const rt=document.querySelector('.tab[data-view="recepcion"]');if(rt)rt.style.display="none";}
+
+/* ============================ IMÁGENES ============================ */
+const drop=$("#drop"),fileInput=$("#f_file"),thumbs=$("#thumbs");
+drop.addEventListener("click",()=>fileInput.click());
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+drop.addEventListener("drop",e=>{e.preventDefault();handleFiles(Array.from(e.dataTransfer.files||[]))});
+fileInput.addEventListener("change",e=>handleFiles(Array.from(e.target.files||[])));
 
 async function handleFiles(files){
-  const dropMsg=$("#dropMsg");dropMsg.textContent="";
+  const dropMsg=$("#m_file");dropMsg.textContent="";
   for(const f of files){
-    if(selectedFiles.length>=CONFIG.MAX_FILES){
-      dropMsg.textContent=`Máximo ${CONFIG.MAX_FILES} archivos`;
-      return;
-    }
+    if(pickedFiles.length>=CONFIG.MAX_FILES){dropMsg.textContent=`Máximo ${CONFIG.MAX_FILES} archivos`;return;}
+    if(!isImageFile(f)&&!isPdfFile(f)){toast("Solo imágenes (JPG/PNG) o PDF");continue;}
     const {ok,file,msgs}=await validateAndCompressFile(f);
-    if(!ok){
-      msgs.forEach(m=>console.warn(m));
-      toast(msgs[0]||"Error al procesar archivo");
-      continue;
-    }
-    selectedFiles.push(file);
+    if(!ok){msgs.forEach(m=>console.warn(m));toast(msgs[0]||"Error al procesar");continue;}
+    pickedFiles.push(file);
   }
   renderThumbs();
 }
 
 function renderThumbs(){
-  const thumbs=$("#thumbs");thumbs.innerHTML=selectedFiles.map((f,i)=>{
-    const isImg=f.type.startsWith("image/");
-    const url=isImg?URL.createObjectURL(f):"";
+  thumbs.innerHTML="";
+  pickedFiles.forEach((f,i)=>{
     const sizeKB=(f.size/1024).toFixed(0);
-    return `<div class="thumb" title="${f.name}">
-      ${isImg?`<img src="${url}">`:`<div style="width:100%;height:100%;background:#f0f0f0;display:grid;place-items:center;font-size:24px">📄</div>`}
-      <button type="button" class="x" onclick="selectedFiles.splice(${i},1);renderThumbs()" style="z-index:10">✕</button>
-      <span class="status" style="font-size:9px">${sizeKB}KB</span>
+    const el=document.createElement("div");el.className="thumb";
+    if(isPdfFile(f)){
+      el.innerHTML=`<div class="thumb-pdf">PDF</div><button class="x" data-i="${i}">×</button><span class="status">${sizeKB}KB</span>`;
+    }else{
+      const url=URL.createObjectURL(f);
+      el.innerHTML=`<img src="${url}"><button class="x" data-i="${i}">×</button><span class="status">${sizeKB}KB</span>`;
+    }
+    thumbs.appendChild(el);
+  });
+  $$("#thumbs .x").forEach(b=>b.addEventListener("click",e=>{pickedFiles.splice(+e.target.dataset.i,1);renderThumbs();}));
+  const info=$("#compressInfo");
+  if(pickedFiles.length>0){
+    const totalMB=(pickedFiles.reduce((s,f)=>s+f.size,0)/1024/1024).toFixed(1);
+    info.textContent=`${pickedFiles.length} archivo(s) · ${totalMB}MB total`;
+    info.classList.remove("warn");if(totalMB>10)info.classList.add("warn");
+  }else{info.textContent="";}
+}
+
+$("#f_monto").addEventListener("input",e=>{const n=e.target.value.replace(/\D/g,"");e.target.value=n?Number(n).toLocaleString("es-CL"):"";});
+$("#f_rut").addEventListener("input",e=>{e.target.value=formatRut(e.target.value);});
+$("#c_rut").addEventListener("input",e=>{e.target.value=formatRut(e.target.value);});
+
+/* ============================ ENVIAR ============================ */
+function setErr(id,msg){$("#f_"+id)?.classList.toggle("err",!!msg);$("#m_"+id).textContent=msg||"";}
+function validateForm(){
+  let ok=true;
+  const nombre=$("#f_nombre").value.trim(),rut=$("#f_rut").value.trim(),fecha=$("#f_fecha").value,ciudad=$("#f_ciudad").value.trim(),monto=$("#f_monto").value.replace(/\D/g,"");
+  if(nombre.length<3){setErr("nombre","Ingresa el nombre completo");ok=false;}else setErr("nombre","");
+  if(!validRut(rut)){setErr("rut","RUT inválido");ok=false;}else setErr("rut","");
+  if(!fecha){setErr("fecha","Selecciona la fecha");ok=false;}else setErr("fecha","");
+  if(!ciudad){setErr("ciudad","Indica tu ciudad");ok=false;}else setErr("ciudad","");
+  if(!monto||+monto<=0){setErr("monto","Ingresa el monto");ok=false;}else setErr("monto","");
+  if(pickedFiles.length===0){$("#m_file").textContent="Adjunta al menos una imagen de respaldo";ok=false;}else $("#m_file").textContent="";
+  return ok;
+}
+$("#submitBtn").addEventListener("click",async()=>{
+  if(!validateForm()){toast("Revisa los campos marcados");return;}
+  const btn=$("#submitBtn");btn.disabled=true;btn.textContent="Enviando…";
+  try{
+    const datos={nombre:$("#f_nombre").value.trim(),rut:formatRut($("#f_rut").value),fecha_viaje:$("#f_fecha").value,ciudad:$("#f_ciudad").value.trim(),monto:+$("#f_monto").value.replace(/\D/g,""),comentario:$("#f_comentario").value.trim()||null};
+    let folio;
+    if(DEMO){
+      const urls=await Promise.all(pickedFiles.map(f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f);})));
+      folio="REB-"+new Date().getFullYear()+"-"+String(demoStore.length+1).padStart(4,"0");
+      demoStore.unshift({id:"demo-"+Date.now(),folio,...datos,respaldos:urls,estado:"pendiente",created_at:new Date().toISOString()});
+    }else{
+      const prefix=crypto.randomUUID();
+      const paths=[];
+      for(let i=0;i<pickedFiles.length;i++){
+        const f=pickedFiles[i];
+        const ext=isPdfFile(f)?"pdf":((f.name.split(".").pop()||"jpg").toLowerCase());
+        const path=`${prefix}/${i}.${ext}`;
+        const {error}=await sb.storage.from(CONFIG.BUCKET).upload(path,f,{upsert:false,contentType:f.type||(isPdfFile(f)?"application/pdf":"image/jpeg")});
+        if(error)throw error;paths.push(path);
+      }
+      const {data,error}=await sb.rpc("crear_reembolso",{p_nombre:datos.nombre,p_rut:datos.rut,p_fecha:datos.fecha_viaje,p_ciudad:datos.ciudad,p_monto:datos.monto,p_comentario:datos.comentario,p_respaldos:paths});
+      if(error)throw error;folio=data;
+    }
+    $("#successFolio").textContent=folio;
+    resetForm();$$(".tab").forEach(x=>x.classList.remove("active"));
+    showView("success");
+  }catch(err){console.error(err);toast("❌ "+(err.message||err));}
+  finally{btn.disabled=false;btn.textContent="Enviar solicitud de reembolso";}
+});
+function resetForm(){["nombre","rut","fecha","ciudad","monto","comentario"].forEach(id=>{const el=$("#f_"+id);if(el)el.value="";});pickedFiles=[];renderThumbs();}
+$("#newOne").addEventListener("click",()=>{$$(".tab").forEach(x=>x.classList.remove("active"));$('.tab[data-view="form"]').classList.add("active");showView("form");});
+
+/* ============================ MI SOLICITUD ============================ */
+$("#consultaBtn").addEventListener("click",async()=>{
+  const folio=$("#c_folio").value.trim().toUpperCase(),rut=formatRut($("#c_rut").value);
+  $("#m_consulta").textContent="";$("#consultaResult").style.display="none";
+  if(!folio||!validRut(rut)){$("#m_consulta").textContent="Ingresa folio y RUT válidos";return;}
+  const btn=$("#consultaBtn");btn.disabled=true;btn.textContent="Consultando…";
+  try{
+    let row=null;
+    if(DEMO){row=demoStore.find(r=>r.folio===folio&&cleanRut(r.rut)===cleanRut(rut))||null;}
+    else{const {data,error}=await sb.rpc("consultar_reembolso",{p_folio:folio,p_rut:rut});if(error)throw error;row=(data&&data.length)?data[0]:null;}
+    if(!row){$("#m_consulta").textContent="No encontramos una solicitud con esos datos";}
+    else{
+      $("#consultaResult").style.display="block";
+      $("#consultaResult").innerHTML=`<div style="text-align:center;margin-bottom:16px"><span class="chip ${esc(row.estado)}">${labelEstado[row.estado]||row.estado}</span></div><div class="statline"><span class="k">Folio</span><span class="v mono">${esc(row.folio)}</span></div><div class="statline"><span class="k">Monto solicitado</span><span class="v mono">${clp(row.monto)}</span></div><div class="statline"><span class="k">Fecha de viaje</span><span class="v">${fmtFecha(row.fecha_viaje)}</span></div>`;
+    }
+  }catch(err){console.error(err);$("#m_consulta").textContent="Error al consultar";}
+  finally{btn.disabled=false;btn.textContent="Consultar estado";}
+});
+
+/* ============================ AUTH (RRHH) ============================ */
+let rrhhClave=null;
+function initAuth(){if(DEMO){$("#gateWrap").querySelector("p").textContent="Modo demo: entra con cualquier clave para probar.";}}
+function enterAdmin(){session=true;$("#gateWrap").style.display="none";$("#adminWrap").style.display="block";$("#whoami").textContent="Recepción RRHH";render();}
+$("#loginBtn").addEventListener("click",doLogin);
+$("#authPass").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
+async function doLogin(){
+  const clave=$("#authPass").value;$("#m_auth").textContent="";
+  if(!clave){$("#m_auth").textContent="Ingresa la clave";return;}
+  const btn=$("#loginBtn");btn.disabled=true;btn.textContent="Entrando…";
+  try{
+    if(DEMO){rrhhClave=clave;allRows=[...demoStore];enterAdmin();}
+    else{const {data,error}=await sb.rpc("rrhh_listar",{p_clave:clave});if(error)throw error;rrhhClave=clave;allRows=data||[];enterAdmin();}
+  }catch(err){$("#m_auth").textContent="Clave incorrecta";}
+  finally{btn.disabled=false;btn.textContent="Entrar";}
+}
+$("#logoutBtn").addEventListener("click",()=>{rrhhClave=null;session=false;$("#authPass").value="";$("#gateWrap").style.display="block";$("#adminWrap").style.display="none";});
+
+/* ============================ RECEPCIÓN ============================ */
+$("#reloadBtn").addEventListener("click",loadCards);
+$("#q").addEventListener("input",render);
+$("#fEstado").addEventListener("change",render);
+$("#exportBtn").addEventListener("click",exportCSV);
+
+/* --- Cambio de vista: Solicitudes / Historial --- */
+$$(".seg-btn").forEach(b=>b.addEventListener("click",()=>{
+  $$(".seg-btn").forEach(x=>x.classList.remove("active"));b.classList.add("active");
+  const p=b.dataset.panel;
+  $("#viewSolicitudes").style.display=(p==="solicitudes")?"block":"none";
+  $("#viewHistorial").style.display=(p==="historial")?"block":"none";
+  if(p==="historial")renderHistorial();
+}));
+$("#histBasis").addEventListener("change",renderHistorial);
+$("#histScope").addEventListener("change",renderHistorial);
+$("#histExport").addEventListener("click",exportHistorialCSV);
+function refreshHist(){if($("#viewHistorial")&&$("#viewHistorial").style.display!=="none")renderHistorial();}
+
+async function loadCards(){
+  try{
+    if(DEMO){allRows=[...demoStore];}
+    else{const {data,error}=await sb.rpc("rrhh_listar",{p_clave:rrhhClave});if(error)throw error;allRows=data||[];}
+    render();refreshHist();
+  }catch(err){console.error(err);toast("Error al cargar: "+(err.message||err));}
+}
+function render(){
+  const q=$("#q").value.trim().toLowerCase(),fe=$("#fEstado").value;
+  const rows=allRows.filter(r=>(!q||(r.nombre+" "+r.rut+" "+r.folio).toLowerCase().includes(q))&&(!fe||r.estado===fe));
+  $("#st_total").textContent=allRows.length;
+  $("#st_pend").textContent=allRows.filter(r=>r.estado==="pendiente").length;
+  $("#st_apr").textContent=allRows.filter(r=>r.estado==="aprobado"||r.estado==="pagado").length;
+  $("#st_monto").textContent=clp(allRows.filter(r=>r.estado==="pendiente").reduce((a,r)=>a+(+r.monto||0),0));
+  const c=$("#cards");
+  if(!rows.length){c.innerHTML=`<div class="empty">No hay solicitudes que coincidan.</div>`;return;}
+  c.innerHTML=rows.map(r=>`
+    <div class="rcard" data-id="${esc(r.id)}" data-folio="${esc(r.folio)}" data-nombre="${esc(r.nombre)}" data-resp='${esc(JSON.stringify(r.respaldos||[]))}'>
+      <div class="rcard-top toggle">
+        <div><div class="rc-name">${esc(r.nombre)}</div>
+          <div class="rc-meta"><span class="mono">${esc(r.rut)}</span><span>✈ ${fmtFecha(r.fecha_viaje)}</span><span>📍 ${esc(r.ciudad)||"—"}</span><span class="rc-folio">${esc(r.folio)}</span></div></div>
+        <div class="rc-right"><span class="chip ${esc(r.estado)}">${labelEstado[r.estado]||r.estado}</span><span class="rc-monto">${clp(r.monto)}</span></div>
+      </div>
+      <div class="rcard-body">
+        <div class="detail-grid">
+          <div><div class="dt">Folio</div><div class="dd mono">${esc(r.folio)}</div></div>
+          <div><div class="dt">Fecha viaje</div><div class="dd">${fmtFecha(r.fecha_viaje)}</div></div>
+          <div><div class="dt">Ciudad</div><div class="dd">${esc(r.ciudad)||"—"}</div></div>
+          <div><div class="dt">Monto</div><div class="dd mono">${clp(r.monto)}</div></div>
+          <div><div class="dt">Enviado</div><div class="dd">${fmtFecha((r.created_at||"").slice(0,10))}</div></div>
+        </div>
+        ${r.comentario?`<div style="margin-bottom:14px"><div class="dt">Comentario</div><div class="dd" style="font-weight:400">${esc(r.comentario)}</div></div>`:""}
+        <div class="respaldos-title">Respaldo (${(r.respaldos||[]).length})</div>
+        <div class="respaldos" data-loaded="0"><span style="color:var(--ink-faint);font-size:13px">Abre para cargar…</span></div>
+        <div class="estado-actions">
+          <button class="ea-btn" data-e="pendiente">Pendiente</button>
+          <button class="ea-btn" data-e="aprobado">Aprobar</button>
+          <button class="ea-btn" data-e="pagado">Marcar pagado</button>
+          <button class="ea-btn" data-e="rechazado">Rechazar</button>
+        </div>
+      </div>
+    </div>`).join("");
+
+  $$("#cards .toggle").forEach(t=>t.addEventListener("click",async e=>{
+    if(e.target.closest(".ea-btn"))return;
+    const card=t.closest(".rcard");card.classList.toggle("open");
+    if(card.classList.contains("open"))await loadRespaldos(card);
+  }));
+  $$("#cards .ea-btn").forEach(b=>b.addEventListener("click",async e=>{e.stopPropagation();await setEstado(b.closest(".rcard").dataset.id,b.dataset.e);}));
+}
+
+function respaldoEsPdf(p){return /\.pdf($|\?)/i.test(p)||/^data:application\/pdf/i.test(p);}
+function nombreRespaldo(p,i,esPdf){
+  if(!/^data:/.test(p)){const base=(p.split("/").pop()||"").split("?")[0];if(base)return base;}
+  return `respaldo-${i+1}.${esPdf?"pdf":"jpg"}`;
+}
+async function loadRespaldos(card){
+  const box=card.querySelector(".respaldos");
+  if(box.dataset.loaded==="1")return;
+  const paths=JSON.parse(card.dataset.resp||"[]");
+  const folio=card.dataset.folio||"respaldos";
+  const nombre=card.dataset.nombre||"";
+  if(!paths.length){box.innerHTML='<span style="color:var(--ink-faint)">Sin respaldos</span>';box.dataset.loaded="1";return;}
+  box.innerHTML='<span style="color:var(--ink-faint);font-size:13px">Cargando respaldos…</span>';
+  const items=[];
+  for(let i=0;i<paths.length;i++){
+    const p=paths[i];
+    const esPdf=respaldoEsPdf(p);
+    const fname=nombreRespaldo(p,i,esPdf);
+    let viewUrl="";
+    if(DEMO){viewUrl=p;}
+    else{const {data:v}=await sb.storage.from(CONFIG.BUCKET).createSignedUrl(p,3600);viewUrl=v?.signedUrl||"";}
+    items.push({viewUrl,esPdf,fname});
+  }
+  const gallery=items.map(it=>{
+    if(it.esPdf){
+      return `<div class="respaldo-item">
+        <a class="respaldo-pdf-ico" href="${esc(it.viewUrl)}" target="_blank" rel="noopener" title="Abrir PDF">PDF</a>
+        <div class="respaldo-cap">Ver PDF</div>
+      </div>`;
+    }
+    return `<div class="respaldo-item">
+      <a href="#" class="lbopen" data-u="${esc(it.viewUrl)}"><img src="${esc(it.viewUrl)}" alt="respaldo" loading="lazy"></a>
+      <div class="respaldo-cap">Ampliar</div>
     </div>`;
   }).join("");
-  const info=$("#compressInfo");
-  if(selectedFiles.length>0){
-    const totalMB=(selectedFiles.reduce((s,f)=>s+f.size,0)/1024/1024).toFixed(1);
-    info.textContent=`${selectedFiles.length} archivo(s) · ${totalMB}MB total`;
-    info.classList.remove("warn");
-    if(totalMB>10)info.classList.add("warn");
-  }else{
-    info.textContent="";
+  box.innerHTML=`<div class="respaldo-gallery">${gallery}</div>
+    <button class="btn-dl-sol" type="button">⬇ Descargar respaldos (${items.length}) · ZIP</button>`;
+  box.dataset.loaded="1";
+  box.querySelectorAll(".lbopen").forEach(a=>a.addEventListener("click",e=>{e.preventDefault();openLb(a.dataset.u);}));
+  const dlBtn=box.querySelector(".btn-dl-sol");
+  dlBtn.addEventListener("click",()=>descargarSolicitud(items,folio,nombre,dlBtn));
+}
+
+function nombreArchivoZip(folio,nombre){
+  const limpio=String(nombre||"").replace(/[\\/:*?"<>|]/g,"").trim();
+  return (limpio?`${folio} - ${limpio}`:folio)+"-respaldos.zip";
+}
+async function descargarSolicitud(items,folio,nombre,btn){
+  // Fallback si no cargó JSZip: descarga los archivos uno a uno
+  if(typeof JSZip==="undefined"){
+    toast("Sin ZIP disponible; descargando archivos");
+    for(const it of items){const a=document.createElement("a");a.href=it.viewUrl;a.download=it.fname;a.target="_blank";document.body.appendChild(a);a.click();a.remove();await new Promise(r=>setTimeout(r,300));}
+    return;
   }
-}
-
-/* ==================== FORM SUBMIT ==================== */
-async function submitForm(e){
-  e.preventDefault();
-  const btn=$("#submitBtn");btn.disabled=true;btn.textContent="Enviando...";
+  const orig=btn.textContent;btn.disabled=true;btn.textContent="Preparando ZIP…";
   try{
-    if(!selectedFiles.length){throw new Error("Adjunta al menos un comprobante");}
-    const nombre=$("#nombre").value.trim();const rut=$("#rut").value.trim();const fechaViaje=$("#fechaViaje").value;const ciudad=$("#ciudad").value.trim();const monto=parseInt($("#monto").value)||0;const medioPago=$("#medioPago").value;const comentario=$("#comentario").value.trim();
-    if(!nombre||!rut||!fechaViaje||monto<=0||!medioPago){throw new Error("Completa todos los campos obligatorios");}
-    const folio=genFolio();
-    let respaldoPaths=[];
-    if(!DEMO){
-      for(const[idx,f]of selectedFiles.entries()){
-        const ext=f.type==="application/pdf"?".pdf":".jpg";const path=`${folio}/${Date.now()}_${idx}${ext}`;const {error}=await sb.storage.from(CONFIG.BUCKET).upload(path,f);if(error)throw new Error(`Upload falló: ${error.message}`);respaldoPaths.push(path);
-      }
-      const {data,error}=await sb.rpc("crear_reembolso",{p_folio:folio,p_nombre:nombre,p_rut:rut,p_fecha_viaje:fechaViaje,p_ciudad:ciudad,p_monto:monto,p_medio_pago:medioPago,p_comentario:comentario,p_respaldos:respaldoPaths});
-      if(error)throw new Error(error.message);
-    }else{
-      demoStore.push({id:Date.now(),folio,nombre,rut,fecha_viaje:fechaViaje,ciudad,monto,medio_pago:medioPago,comentario,respaldos:selectedFiles.map(f=>URL.createObjectURL(f)),estado:"pendiente",created_at:new Date().toISOString()});
+    const zip=new JSZip();
+    for(const it of items){
+      const resp=await fetch(it.viewUrl);
+      if(!resp.ok)throw new Error("No se pudo leer "+it.fname);
+      zip.file(it.fname, await resp.blob());
     }
-    $("#mainForm").reset();selectedFiles=[];renderThumbs();
-    const miSolBox=$("#miSolicitudBox");const r=DEMO?demoStore[demoStore.length-1]:{folio};
-    miSolBox.innerHTML=`<div class="card-box success"><div class="check">✓</div><h2>¡Solicitud enviada!</h2><p style="color:var(--ink-soft);margin:12px 0 0">Tu solicitud ha sido registrada correctamente.</p><div class="folio-box"><span>Tu folio</span><b>${esc(folio)}</b></div><p style="font-size:13px;color:var(--ink-faint);margin:20px 0 0">Conserva este número para dar seguimiento a tu reembolso.</p></div>`;
-    const tabs=$$(".tab");tabs[0].classList.remove("active");tabs[1].classList.add("active");
-    const views=$$(".view");views[0].classList.remove("active");views[1].classList.add("active");
-    toast("✓ Solicitud enviada correctamente");
-  }catch(err){
-    toast("❌ "+err.message);
-  }finally{btn.disabled=false;btn.textContent="Enviar solicitud de reembolso";}
+    const out=await zip.generateAsync({type:"blob"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(out);
+    a.download=nombreArchivoZip(folio,nombre);
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    toast("Descargado: "+a.download);
+  }catch(err){console.error(err);toast("Error al descargar: "+(err.message||err));}
+  finally{btn.disabled=false;btn.textContent=orig;}
+}
+async function setEstado(id,estado){
+  try{
+    if(DEMO){const r=demoStore.find(x=>String(x.id)===String(id));if(r)r.estado=estado;}
+    else{const {error}=await sb.rpc("rrhh_estado",{p_clave:rrhhClave,p_id:id,p_estado:estado});if(error)throw error;}
+    const r=allRows.find(x=>String(x.id)===String(id));if(r)r.estado=estado;
+    render();refreshHist();const card=$(`.rcard[data-id="${CSS.escape(String(id))}"]`);if(card){card.classList.add("open");loadRespaldos(card);}
+    toast("Estado: "+(labelEstado[estado]||estado));
+  }catch(err){toast("Error: "+(err.message||err));}
 }
 
-/* ==================== TAB NAVIGATION ==================== */
-$$(".tab").forEach((t,i)=>{t.addEventListener("click",()=>{$$(".tab").forEach(x=>x.classList.remove("active"));$$(".view").forEach(x=>x.classList.remove("active"));t.classList.add("active");$$(".view")[i].classList.add("active");if(i===1){const folio=$("#folioNew").textContent;$("#miSolicitudBox").innerHTML=folio==="—"?"<p style='color:var(--ink-faint)'>Envía una solicitud primero.</p>":"";}});});
+function openLb(u){$("#lbImg").src=u;$("#lightbox").classList.add("open");}
+$("#lbClose").addEventListener("click",()=>$("#lightbox").classList.remove("open"));
+$("#lightbox").addEventListener("click",e=>{if(e.target.id==="lightbox")$("#lightbox").classList.remove("open");});
 
-/* ==================== INIT ==================== */
-$("#folioNew").textContent=genFolio();
-if(DEMO){console.warn("MODO DEMO: Sin servidor Supabase. Los datos se pierden al recargar.");}
+/* ============================ QR FORMULARIO ============================ */
+function formUrl(){return location.origin+location.pathname+"?form=1";}
+function renderQr(){
+  const box=$("#qrBox");box.innerHTML="";
+  const url=$("#qrUrl").value.trim()||formUrl();
+  if(typeof QRCode==="undefined"){box.textContent="No se pudo cargar el generador de QR (revisa tu conexión).";return;}
+  try{new QRCode(box,{text:url,width:220,height:220,correctLevel:QRCode.CorrectLevel.M});}
+  catch(e){box.textContent="Enlace inválido";}
+}
+$("#qrBtn").addEventListener("click",()=>{
+  if(!$("#qrUrl").value)$("#qrUrl").value=formUrl();
+  renderQr();$("#qrModal").classList.add("open");
+});
+$("#qrClose").addEventListener("click",()=>$("#qrModal").classList.remove("open"));
+$("#qrModal").addEventListener("click",e=>{if(e.target.id==="qrModal")$("#qrModal").classList.remove("open");});
+$("#qrRegen").addEventListener("click",renderQr);
+$("#qrDownload").addEventListener("click",()=>{
+  const c=$("#qrBox").querySelector("canvas");if(!c){toast("Genera el QR primero");return;}
+  const a=document.createElement("a");a.href=c.toDataURL("image/png");a.download="qr-reembolso.png";a.click();
+});
+$("#qrPrint").addEventListener("click",()=>{
+  const c=$("#qrBox").querySelector("canvas");
+  const data=c?c.toDataURL("image/png"):($("#qrBox").querySelector("img")||{}).src||"";
+  const w=window.open("","_blank");
+  if(!w){toast("Permite las ventanas emergentes para imprimir");return;}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>QR Reembolso de Pasajes</title></head>
+  <body style="font-family:system-ui,sans-serif;text-align:center;padding:48px 24px;color:#102539">
+    <div style="font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:#c4640d;font-weight:700">Newrest · Campamento Albemarle</div>
+    <h1 style="font-size:34px;margin:10px 0 4px">Reembolso de pasajes</h1>
+    <p style="font-size:19px;color:#46607a;margin:0 0 26px">Escanea el código con tu celular para enviar tu solicitud</p>
+    <img src="${data}" style="width:340px;height:340px;border:1px solid #ddd;border-radius:14px;padding:14px">
+    <p style="font-size:12px;color:#8497a8;margin-top:22px;word-break:break-all">${esc($("#qrUrl").value||formUrl())}</p>
+  </body></html>`);
+  w.document.close();w.focus();setTimeout(()=>w.print(),350);
+});
+
+/* ============================ HISTORIAL · PAGOS POR MES ============================ */
+const MESES=["ene.","feb.","mar.","abr.","may.","jun.","jul.","ago.","sep.","oct.","nov.","dic."];
+function mesLabel(ym){const [y,m]=ym.split("-");return `${MESES[+m-1]||m} ${y}`;}
+
+function buildHistorial(basis){
+  const map={};
+  allRows.forEach(r=>{
+    const ym=String(r[basis]||"").slice(0,7);
+    if(!/^\d{4}-\d{2}$/.test(ym))return;
+    if(!map[ym])map[ym]={ym,count:0,total:0,pagado:0,porPagar:0,rechazado:0,rows:[]};
+    const g=map[ym],monto=+r.monto||0;
+    g.count++;g.rows.push(r);
+    if(r.estado==="rechazado"){g.rechazado+=monto;}
+    else{g.total+=monto;if(r.estado==="pagado")g.pagado+=monto;else g.porPagar+=monto;}
+  });
+  return Object.values(map).sort((a,b)=>b.ym.localeCompare(a.ym));
+}
+
+function renderHistorial(){
+  const basis=$("#histBasis").value, scope=$("#histScope").value;
+  const groups=buildHistorial(basis);
+  const box=$("#histMonths");
+  if(!groups.length){box.innerHTML='<div class="empty">Aún no hay solicitudes para armar el historial.</div>';return;}
+  const soloPagado=(scope==="pagado");
+  const metric=g=>soloPagado?g.pagado:g.total;
+  const maxV=Math.max(...groups.map(metric),1);
+  box.innerHTML=groups.map(g=>{
+    const rows=g.rows.slice().sort((a,b)=>String(b.created_at||"").localeCompare(String(a.created_at||"")));
+    const visibles=soloPagado?rows.filter(r=>r.estado==="pagado"):rows;
+    const pct=Math.round(metric(g)/maxV*100);
+    return `<div class="hmonth" data-ym="${g.ym}">
+      <div class="hmonth-top">
+        <div>
+          <div class="hm-name">${mesLabel(g.ym)}</div>
+          <div class="hm-sub">${g.count} solicitud${g.count===1?"":"es"}${soloPagado?` · ${visibles.length} pagada${visibles.length===1?"":"s"}`:""}</div>
+        </div>
+        <div class="hm-bars">
+          <div class="hm-bar"><span style="width:${pct}%"></span></div>
+          <div class="hm-amounts">
+            <span class="hm-paid">${clp(g.pagado)} pagado</span>
+            ${g.porPagar>0?`<span class="hm-pend">${clp(g.porPagar)} por pagar</span>`:""}
+          </div>
+        </div>
+        <div class="hm-total">${clp(soloPagado?g.pagado:g.total)}</div>
+      </div>
+      <div class="hmonth-body">
+        ${visibles.length?`<table class="htable">
+          <thead><tr><th>Folio</th><th>Colaborador</th><th>Ciudad</th><th>Estado</th><th style="text-align:right">Monto</th></tr></thead>
+          <tbody>${visibles.map(r=>`<tr>
+            <td class="mono">${esc(r.folio)}</td>
+            <td>${esc(r.nombre)}</td>
+            <td>${esc(r.ciudad)||"—"}</td>
+            <td><span class="chip ${esc(r.estado)}">${labelEstado[r.estado]||r.estado}</span></td>
+            <td class="mono" style="text-align:right">${clp(r.monto)}</td>
+          </tr>`).join("")}</tbody>
+        </table>`:'<div style="padding:14px 10px;color:var(--ink-faint);font-size:13px">Sin solicitudes pagadas este mes.</div>'}
+      </div>
+    </div>`;
+  }).join("");
+  box.querySelectorAll(".hmonth-top").forEach(t=>t.addEventListener("click",()=>t.closest(".hmonth").classList.toggle("open")));
+}
+
+function exportHistorialCSV(){
+  const basis=$("#histBasis").value, groups=buildHistorial(basis);
+  if(!groups.length){toast("Nada que exportar");return;}
+  const head=["Mes","Solicitudes","Monto total","Pagado","Por pagar","Rechazado"];
+  const rows=groups.map(g=>[mesLabel(g.ym),g.count,g.total,g.pagado,g.porPagar,g.rechazado]);
+  const csv=[head,...rows].map(row=>row.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(";")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));
+  a.download="historial_mensual_"+new Date().toISOString().slice(0,10)+".csv";a.click();
+}
+
+function exportCSV(){
+  if(!allRows.length){toast("Nada que exportar");return;}
+  const head=["Folio","Nombre","RUT","Fecha viaje","Ciudad","Monto","Estado","Comentario","N respaldos","Enviado"];
+  const rows=allRows.map(r=>[r.folio,r.nombre,r.rut,r.fecha_viaje,r.ciudad,r.monto,r.estado,(r.comentario||"").replace(/\n/g," "),(r.respaldos||[]).length,(r.created_at||"").slice(0,10)]);
+  const csv=[head,...rows].map(row=>row.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(";")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));a.download="reembolsos_"+new Date().toISOString().slice(0,10)+".csv";a.click();
+}
+
+/* seed demo */
+if(DEMO){demoStore.push({id:"demo-seed",folio:"REB-2026-0001",nombre:"María González Rojas",rut:"15.482.013-2",fecha_viaje:"2026-05-28",ciudad:"Calama",monto:142000,estado:"pendiente",comentario:"Tramo Calama–Santiago, viaje por cambio de turno.",respaldos:["https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=400&q=70"],created_at:new Date().toISOString()});}
+initAuth();
 </script>
 </body>
 </html>
